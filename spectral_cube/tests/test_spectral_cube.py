@@ -237,12 +237,12 @@ class TestSlab(BaseTest):
     def test_spectral_channel_bad_units(self):
 
         with pytest.raises(u.UnitsError) as exc:
-            self.c.closest_spectral_channel(1 * u.s, rest_frequency=1 / u.s)
+            self.c.closest_spectral_channel(1 * u.s)
         assert exc.value.args[0] == "'value' should be in frequency equivalent or velocity units (got s)"
 
         with pytest.raises(u.UnitsError) as exc:
             self.c.closest_spectral_channel(1. * u.Hz)
-        assert exc.value.args[0] == "Hz cannot be converted to m / s without a rest frequency"
+        assert exc.value.args[0] == "Spectral axis is in velocity units and 'value' is in frequency-equivalent units - use SpectralCube.with_spectral_unit first to convert the cube to frequency-equivalent units, or search for a velocity instead"
 
     def test_slab(self):
         ms = u.m / u.s
@@ -355,3 +355,18 @@ class TestMasks(BaseTest):
         expected = self.d[op(self.d, thresh)]
         actual = self.c.flattened()
         assert_allclose(actual, expected)
+
+
+def test_preserve_spectral_unit():
+    # astropy.wcs has a tendancy to change spectral units from e.g. km/s to
+    # m/s, so we have a workaround - check that it works.
+
+    cube, data = cube_and_raw('advs.fits')
+
+    cube_freq = cube.with_spectral_unit(u.GHz)
+    assert cube_freq.wcs.wcs.cunit[2] == 'Hz'  # check internal
+    assert cube_freq.spectral_axis.unit is u.GHz
+
+    # Check that this preferred unit is propagated
+    new_cube = cube_freq.with_fill_value(fill_value=3.4)
+    assert new_cube.spectral_axis.unit is u.GHz
