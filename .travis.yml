@@ -51,7 +51,6 @@ matrix:
 
         # Do a coverage test in Python 3.
         # make sure *everything* is run for coverage tests
-        ## COVERAGE TESTS DISABLED: they don't work any more.  I have found no combination of anything that fixes this.
         - env: SETUP_CMD='test --coverage'
                CONDA_DEPENDENCIES='matplotlib yt bottleneck sip aplpy joblib glue-core scipy dask'
           name: coverage
