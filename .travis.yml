@@ -14,6 +14,20 @@ env:
         # The following versions are the 'default' for tests, unless
         # overidden underneath. They are defined here in order to save having
         # to repeat them for all configurations.
+        - PYTHON_VERSION=3.6
+        - SETUP_CMD='test'
+        - NUMPY_VERSION=stable
+        - ASTROPY_VERSION=stable
+          # matplotlib>2 is an install requirement of pvextractor, so we may as
+          # well include it here
+        - CONDA_DEPENDENCIES='matplotlib sip glue-core scipy dask'
+        - CONDA_CHANNELS='astropy glueviz'
+        - PVEXTRACTOR="https://github.com/radio-astro-tools/pvextractor/archive/master.zip"
+        - REGIONS="https://github.com/astropy/regions/archive/master.zip"
+          # lock to reproject v0.5.1: master branch acquired serious regressions in #166
+        - REPROJECT="https://github.com/astropy/reproject/archive/v0.5.1.tar.gz"
+        - RADIOBEAM="https://github.com/radio-astro-tools/radio-beam/archive/master.zip"
+        - PIP_DEPENDENCIES="Cython $PVEXTRACTOR $RADIOBEAM $REGIONS $REPROJECT"
         - SETUP_XVFB=True
         - ON_TRAVIS=True
         - TOXENV=''
