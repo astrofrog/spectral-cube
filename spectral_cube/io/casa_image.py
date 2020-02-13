@@ -1,6 +1,7 @@
 from __future__ import print_function, absolute_import, division
 
 import six
+import uuid
 import warnings
 import tempfile
 import shutil
@@ -458,11 +459,24 @@ def casa_image_dask_reader(imagename):
 
     # convert each chunk to a dask array, and make sure meta is set for performance
     meta = np.zeros((0,), dtype='float32', order='F')
-    chunks = [dask.array.from_array(chunk,
-                                    meta=meta,
-                                    name=False,
-                                    asarray=False,
-                                    chunks=chunk.shape) for chunk in chunks]
+
+    # try and do lower level call
+    chunks_new = []
+    slices = (slice(0, 2, None), slice(0, 1, None), slice(0, 125, None), slice(0, 125, None))
+    for chunk in chunks:
+        name = str(uuid.uuid4())
+        array = dask.array.Array({(name, 0, 0, 0, 0): (dask.array.core.getter, name, slices, False, False),
+                                  name: chunk},
+                                 name, ((2,), (1,), (125,), (125,)), meta=meta)
+        chunks_new.append(array)
+
+    chunks = chunks_new
+
+    # chunks = [dask.array.from_array(chunk,
+    #                                 meta=meta,
+    #                                 name=False,
+    #                                 asarray=False,
+    #                                 chunks=chunk.shape) for chunk in chunks]
 
     def make_nested_list(chunks, stacks):
         chunks = [chunks[i*stacks[0]:(i+1)*stacks[0]] for i in range(len(chunks) // stacks[0])]
