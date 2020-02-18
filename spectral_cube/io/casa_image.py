@@ -287,6 +287,20 @@ def casa_image_dask_reader(imagename, memmap=True, mask=False):
     from casatools import table
     tb = table()
 
+    # the data is stored in the following binary file
+    # each of the chunks is stored on disk in fortran-order
+    if mask:
+        if mask is True:
+            mask = 'mask0'
+        imagename = os.path.join(str(imagename), mask)
+
+    if not os.path.exists(imagename):
+        raise FileNotFoundError(imagename)
+
+    # the data is stored in the following binary file
+    # each of the chunks is stored on disk in fortran-order
+    img_fn = os.path.join(str(imagename), 'table.f0_TSM0')
+
     # load the metadata from the image table
     tb.open(str(imagename))
     dminfo = tb.getdminfo()
@@ -300,17 +314,25 @@ def casa_image_dask_reader(imagename, memmap=True, mask=False):
     totalshape = dminfo['*1']['SPEC']['HYPERCUBES']['*1']['CubeShape']
     totalsize = np.product(totalshape)
 
+    # check the BucketSize - if this is just 8 then the file contains a
+    # single scalar that should be broadcast to the final shape.
+    bucketsize = dminfo['*1']['SPEC']['HYPERCUBES']['*1']['BucketSize']
+
+    # it's not clear what range of values bucketsize can take, so for now
+    # we hard-code the case where bucketsize == 8 (used for scalar masks)
+    # and otherwise require the bucketsize to match the totalsize.
+    if bucketsize == 8:
+        value = np.fromfile(img_fn, dtype='byte', count=totalsize)
+        print(value.tostring())
+        for b in value.tostring():
+            print(bin(b))
+    elif bucketsize != totalsize * 4:
+        raise NotImplementedError(f"Cannot yet handle bucketsize={bucketsize} with totalsize={totalsize}")
+
     # the ratio between these tells you how many chunks must be combined
     # to create a final stack
     stacks = totalshape // chunkshape
     nchunks = np.product(totalshape) // np.product(chunkshape)
-
-    # the data is stored in the following binary file
-    # each of the chunks is stored on disk in fortran-order
-    if mask:
-        img_fn = os.path.join(str(imagename), 'mask0', 'table.f0_TSM0')
-    else:
-        img_fn = os.path.join(str(imagename), 'table.f0_TSM0')
 
     if memmap:
         chunks = [MemmapWrapper(img_fn, dtype='float32', offset=ii*chunksize*4,

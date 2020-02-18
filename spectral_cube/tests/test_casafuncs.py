@@ -249,3 +249,68 @@ def test_casa_arrayslicer(data_adv, tmp_path):
     assert cube[:3,:2,:1].shape == (3,2,1)
     assert np.array(cube.filled_data[:3,:2,:1]).shape == (3,2,1)
     assert np.array(cube[:3,:2,:1].mask.include()).shape == (3,2,1)
+
+
+def test_casa_image_dask_reader(tmpdir):
+
+    # Unit tests for the low-level casa_image_dask_reader function which can
+    # read a CASA image or mask to a Dask array.
+
+    reference = np.random.random((3, 4, 5))
+
+    os.chdir(tmpdir.strpath)
+
+    # Start off with a simple example with no mask. Note that CASA requires
+    # the array to be transposed in order to match what we would expect.
+
+    ia = image()
+    ia.fromarray('basic.image', pixels=reference.T)
+    ia.close()
+
+    array1 = casa_image_dask_reader('basic.image')
+    assert_allclose(array1, reference)
+
+    # Try and get a mask - this should fail since there isn't one.
+
+    with pytest.raises(FileNotFoundError):
+        casa_image_dask_reader('basic.image', mask=True)
+
+    # Now create an array with a simple uniform mask. In this case it seems
+    # that CASA stores the mask in 8 bytes.
+
+    # ia = image()
+    # ia.fromarray('scalar_mask1.image', pixels=reference.T)
+    # ia.calcmask(mask='F')
+    # ia.close()
+
+    # array2 = casa_image_dask_reader('scalar_mask1.image')
+    # assert_allclose(array2, reference)
+
+    # mask2 = casa_image_dask_reader('scalar_mask1.image', mask=True)
+    # assert_allclose(mask2, reference)
+
+    # Now check with True
+
+    # ia = image()
+    # ia.fromarray('scalar_mask2.image', pixels=reference.T)
+    # ia.calcmask(mask='T')
+    # ia.close()
+
+    # array3 = casa_image_dask_reader('scalar_mask2.image')
+    # assert_allclose(array3, reference)
+
+    # mask3 = casa_image_dask_reader('scalar_mask2.image', mask=True)
+    # assert_allclose(mask3, reference)
+
+    # And finally check with a full 3-d mask
+
+    ia = image()
+    ia.fromarray('array_mask.image', pixels=reference.T)
+    ia.calcmask(mask='array_mask.image>0.5')
+    ia.close()
+
+    array1 = casa_image_dask_reader('array_mask.image')
+    assert_allclose(array1, reference)
+
+    mask1 = casa_image_dask_reader('array_mask.image', mask=True)
+    assert_allclose(mask1, reference > 0.5)
