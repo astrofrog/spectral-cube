@@ -166,8 +166,6 @@ static PyObject *_combine_chunks(PyObject *self, PyObject *args)
             {
                 i_o = bx * nx;
 
-                printf("offsets: %d %d %d", i_o, j_o, k_o);
-
                 for (k = 0; k < nz; ++k)
                 {
                     for (j = 0; j < ny; ++j)
