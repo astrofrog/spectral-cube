@@ -14,6 +14,36 @@ from .casa_low_level_io import getdminfo
 __all__ = ['casa_image_dask_reader']
 
 
+def combine_chunks(array_1d, shape, oversample):
+    """
+    Given a 1d array of values from a CASA file, which contains ``oversample``
+    chunks (which is a list/tuple of three elements) return a 1d array that
+    would have been returned if there was just one chunk.
+
+    For now, assume that oversample is a tuple of elements in opposite of Numpy
+    order for axes.
+    """
+
+    # NOTE: if this ends up being a bottleneck, it could also be written as a
+    # C/Cython function.
+
+    size = int(np.product(shape))
+    native_shape = [s // o for (s, o) in zip(shape, oversample)]
+    native_size = int(np.product(native_shape))
+
+    # Split 1-d array into native chunks and add to final array
+    result = np.zeros(shape)
+    for i in range(oversample[0]):
+        for j in range(oversample[1]):
+            for k in range(oversample[2]):
+                array_current, array_1d = array_1d[:native_size], array_1d[native_size:]
+                result[i * native_shape[0]:(i+1) * native_shape[0],
+                       j * native_shape[1]:(j+1) * native_shape[1],
+                       k * native_shape[2]:(k+1) * native_shape[2]] = array_current.reshape(native_shape, order='F')
+
+    return result.reshape((size,), order='F')
+
+
 class CASAArrayWrapper:
     """
     A wrapper class for dask that accesses chunks from a CASA file on request.
@@ -26,10 +56,11 @@ class CASAArrayWrapper:
     down.
     """
 
-    def __init__(self, filename, totalshape, chunkshape, dtype=None, itemsize=None, memmap=False):
+    def __init__(self, filename, totalshape, chunkshape, chunkoversample=None, dtype=None, itemsize=None, memmap=False):
         self._filename = filename
         self._totalshape = totalshape[::-1]
         self._chunkshape = chunkshape[::-1]
+        self._chunkoversample = chunkoversample
         self.shape = totalshape[::-1]
         self.dtype = dtype
         self.ndim = len(self.shape)
@@ -84,14 +115,16 @@ class CASAArrayWrapper:
             else:
                 ceil_chunksize = int(ceil(self._chunksize / 8)) * 8
                 return (self._array[chunk_number*ceil_chunksize:(chunk_number+1)*ceil_chunksize][:self._chunksize]
-                             .reshape(self._chunkshape[::-1], order='F').T[item_in_chunk])
+                            .reshape(self._chunkshape[::-1], order='F').T[item_in_chunk])
 
         else:
 
             if self._memmap:
-                return np.fromfile(self._filename, dtype=self.dtype,
-                                   offset=offset,
-                                   count=self._chunksize).reshape(self._chunkshape[::-1], order='F').T[item_in_chunk]
+                return (combine_chunks(np.fromfile(self._filename, dtype=self.dtype,
+                                       offset=offset,
+                                       count=self._chunksize), shape=self._chunkshape[::-1],
+                                       oversample=self._chunkoversample)
+                                       .reshape(self._chunkshape[::-1], order='F').T[item_in_chunk])
             else:
                 return (self._array[chunk_number*self._chunksize:(chunk_number+1)*self._chunksize]
                             .reshape(self._chunkshape[::-1], order='F').T[item_in_chunk])
@@ -200,8 +233,15 @@ def casa_image_dask_reader(imagename, memmap=True, mask=False):
     chunkshape = tuple(int(x) for x in chunkshape)
     totalshape = tuple(int(x) for x in totalshape)
 
+    # CASA chunks are typically too small to be efficient, so we use a larger
+    # chunk size for dask and then tell CASAArrayWrapper about both the native
+    # and target chunk size.
+    # chunkshape = determine_optimal_chunkshape(totalshape, chunkshape)
+    chunkoversample = (1, 1, 1)
+    chunkshape = [c * o for (c, o) in zip(chunkshape, chunkoversample)]
+
     # Create a wrapper that takes slices and returns the appropriate CASA data
-    wrapper = CASAArrayWrapper(img_fn, totalshape, chunkshape, dtype=dtype, itemsize=itemsize, memmap=memmap)
+    wrapper = CASAArrayWrapper(img_fn, totalshape, chunkshape, chunkoversample=chunkoversample, dtype=dtype, itemsize=itemsize, memmap=memmap)
 
     # Convert to a dask array
     dask_array = dask.array.from_array(wrapper, name='CASA Data ' + str(uuid.uuid4()), chunks=chunkshape[::-1])
